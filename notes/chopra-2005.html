@@ -18,144 +18,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
-<style>
-:root{
-  --bg:#ffffff; --fg:#1d1d1f; --dim:#6b6b70; --faint:#b4b4ba; --line:#e8e8ec;
-  --link:#1f5fae; --accent:#c8372d; --ok:#2a8a57; --soft:#f6f6f8;
-  --serif:"Source Serif 4",Georgia,serif; --mono:"JetBrains Mono",ui-monospace,monospace;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-html[lang=en] .fr, html[lang=fr] .en{display:none !important}
-html{scroll-behavior:smooth}
-@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
-body{background:var(--bg);color:var(--fg);font-family:var(--serif);font-size:17.5px;line-height:1.65;-webkit-font-smoothing:antialiased}
-a{color:var(--link);text-decoration:none}
-a:hover{text-decoration:underline}
-.page{max-width:760px;margin:0 auto;padding:28px 24px 80px}
-@media (max-width:520px){.page{padding:20px 16px 64px}body{font-size:16.5px}}
-.mono{font-family:var(--mono)}
-
-/* top bar */
-.top{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:15px}
-.top .back{color:var(--dim)}
-.lang{display:inline-flex;border:1px solid var(--line);font-family:var(--mono);font-size:12.5px}
-.lang button{border:0;background:none;padding:4px 10px;cursor:pointer;color:var(--dim);font:inherit}
-.lang button[aria-pressed=true]{background:var(--fg);color:#fff}
-
-/* title block */
-.kicker{font-family:var(--mono);font-size:12px;color:var(--dim);letter-spacing:.04em;margin-top:44px;text-transform:uppercase}
-h1{font-weight:600;font-size:31px;line-height:1.22;letter-spacing:-.01em;margin-top:8px}
-.meta{color:var(--dim);margin-top:10px;font-size:16px}
-.meta b{color:var(--fg);font-weight:600}
-.links{margin-top:6px;font-size:15.5px}
-.intro{margin-top:22px;font-style:italic;color:#3a3a3f}
-.sep{color:var(--faint);margin:0 6px}
-
-h2{font-weight:600;font-size:22px;margin:52px 0 14px;padding-bottom:6px;border-bottom:1px solid var(--line);scroll-margin-top:16px}
-h2 .n{font-family:var(--mono);font-size:14px;color:var(--faint);margin-right:8px;font-weight:400}
-h3{font-weight:600;font-size:18px;margin:26px 0 8px}
-p{margin-top:12px}
-ul.list{margin:10px 0 0 22px}
-ul.list li{margin-top:5px}
-b{font-weight:600}
-
-/* boxes */
-.box{margin-top:20px;padding:12px 0 14px;border-top:1px solid var(--fg);border-bottom:1px solid var(--line)}
-.box .t{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin-bottom:2px}
-.box.warn .t{color:var(--accent)}
-h2 + .box{border-top:0;padding-top:0}
-.box p:first-of-type{margin-top:4px}
-.box ol{margin:6px 0 0 20px}
-.box ol li{margin-top:4px}
-
-/* table of contents */
-.toc{margin-top:30px;font-size:15.5px;columns:2;column-gap:32px}
-@media (max-width:560px){.toc{columns:1}}
-.toc a{display:block;padding:2px 0;color:var(--fg)}
-.toc a:hover{color:var(--link)}
-.toc .n{font-family:var(--mono);font-size:12px;color:var(--faint);display:inline-block;width:24px}
-
-/* math, code, ascii */
-.katex{font-size:1.05em}
-.eq{margin:16px 0;overflow-x:auto;overflow-y:hidden;padding:2px 0}
-pre.ascii{font-family:var(--mono);font-variant-ligatures:none;font-size:13.5px;line-height:1.35;color:var(--fg);background:var(--soft);padding:14px 16px;margin-top:16px;overflow-x:auto}
-pre.ascii b{color:var(--accent);font-weight:500}
-@media (max-width:520px){pre.ascii{font-size:11.5px}}
-
-/* tables */
-.tw{overflow-x:auto;margin-top:16px}
-table{border-collapse:collapse;width:100%;font-size:15px}
-th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-weight:600;border-bottom:1.5px solid var(--fg)}
-td.num,th.num{text-align:right;font-family:var(--mono);font-size:13.5px}
-
-figure{margin-top:20px}
-figcaption{font-size:14.5px;color:var(--dim);margin-top:8px}
-
-/* demo */
-.demo{margin-top:20px;border:1px solid var(--line);padding:14px}
-.demo-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-@media (max-width:620px){.demo-grid{grid-template-columns:1fr}}
-.demo canvas{width:100%;display:block;background:#fcfcfd;border:1px solid var(--line)}
-#emb{aspect-ratio:1}
-#chart{aspect-ratio:1}
-.ctrl{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-top:12px;font-size:15px}
-.btn{font-family:var(--mono);font-size:13px;border:1px solid var(--fg);background:var(--fg);color:#fff;padding:6px 12px;cursor:pointer}
-.btn.ghost{background:none;color:var(--fg)}
-.btn:hover{opacity:.85}
-.ctrl label{cursor:pointer;display:inline-flex;gap:6px;align-items:center}
-.ctrl input{accent-color:var(--fg)}
-.readout{font-family:var(--mono);font-size:12.5px;color:var(--dim);margin-top:10px;line-height:1.7}
-.readout .g{color:var(--link)} .readout .i{color:var(--accent)}
-.legend{font-size:14px;color:var(--dim);margin-top:8px}
-.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--dim);vertical-align:middle;margin:0 2px}
-.ring{display:inline-block;width:10px;height:10px;border-radius:50%;border:1.6px solid var(--dim);vertical-align:middle;margin:0 2px}
-
-#lossplot{width:100%;aspect-ratio:2/1;display:block;border:1px solid var(--line);background:#fcfcfd}
-.seg{display:inline-flex;border:1px solid var(--line);font-family:var(--mono);font-size:12.5px;margin-top:10px}
-.seg button{border:0;background:none;padding:5px 10px;cursor:pointer;color:var(--dim);font:inherit}
-.seg button[aria-pressed=true]{background:var(--fg);color:#fff}
-
-/* timeline */
-.tl{list-style:none;margin-top:14px}
-.tl li{display:grid;grid-template-columns:64px 1fr;gap:16px;padding:9px 0;border-top:1px solid var(--line)}
-.tl li:first-child{border-top:0}
-.tl .y{font-family:var(--mono);font-size:13.5px;color:var(--dim);padding-top:2px}
-.tl .here{color:var(--accent)}
-
-/* quiz */
-.q{margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
-.q:first-child{border-top:0;padding-top:0}
-.q .qt{font-weight:600}
-.q .qn{font-family:var(--mono);font-size:12.5px;color:var(--faint);margin-right:6px;font-weight:400}
-.opts{margin-top:8px;display:grid;gap:6px}
-.opt{display:flex;gap:10px;align-items:flex-start;padding:7px 10px;border:1px solid var(--line);cursor:pointer;font-size:16px}
-.opt:hover{border-color:var(--faint)}
-.opt input{margin-top:5px;accent-color:var(--fg)}
-.opt.right{border-color:var(--ok);background:#f1f7f3}
-.opt.wrong{border-color:var(--accent);background:#fbf3f2}
-.fb{margin-top:8px;font-size:15px;color:#3a3a3f;display:none}
-.done .fb{display:block}
-.done .opt{cursor:default}
-.quiz-bar{display:flex;gap:12px;align-items:center;margin-top:26px;flex-wrap:wrap}
-.score{font-family:var(--mono);font-size:14px}
-#cat-out{margin-top:20px;display:none;align-items:flex-end;gap:14px;flex-wrap:wrap}
-#cat-out.on{display:flex}
-#cat-out pre{font-family:var(--mono);font-variant-ligatures:none;font-size:15px;line-height:1.25;white-space:pre;margin:0}
-#cat-out pre .hl{color:var(--accent)}
-#cat-out .say{font-family:var(--mono);font-size:15px;color:var(--accent);padding-bottom:58px;min-width:9ch}
-#cat-out .msg{flex-basis:100%;font-size:16px}
-#cat-out.hop pre{animation:hop .3s ease-in-out 6 alternate}
-@keyframes hop{to{transform:translateY(-6px)}}
-@media (prefers-reduced-motion: reduce){#cat-out.hop pre{animation:none}}
-
-.refs{font-size:15px}
-.refs li{margin-top:6px}
-.cite{font-family:var(--mono);font-size:12px;white-space:pre-wrap;background:var(--soft);padding:12px 14px;margin-top:10px;color:#3a3a3f;overflow-x:auto}
-
-footer{margin-top:64px;padding-top:16px;border-top:1px solid var(--line);font-size:14px;color:var(--dim);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-footer .mono{font-size:12px;color:var(--faint)}
-</style>
+<link rel="stylesheet" href="notes.css">
 </head>
 <body>
 <div class="page">
@@ -511,7 +374,7 @@ footer .mono{font-size:12px;color:var(--faint)}
   <li><span class="y here">2005</span><div><b>Chopra, Hadsell &amp; LeCun</b> <span class="en">(this paper). Energy-based contrastive loss, learned invariances, test on unseen people.</span><span class="fr">(cet article). Loss contrastive issue des modèles à énergie, invariances apprises, test sur des personnes inconnues.</span></div></li>
   <li><span class="y">2006</span><div><b>Hadsell, Chopra &amp; LeCun</b>, <i>Dimensionality Reduction by Learning an Invariant Mapping</i>. <span class="en">The margin-based contrastive loss that became the standard.</span><span class="fr">La loss contrastive à marge, devenue le standard.</span></div></li>
   <li><span class="y">2015</span><div><b>FaceNet</b> (Schroff et al.). <span class="en">Triplet loss: an anchor must be closer to a positive than to a negative by a margin. 128-D face embeddings at scale.</span><span class="fr">Triplet loss : une ancre doit être plus proche d'un positif que d'un négatif, avec une marge. Embeddings de visages en 128 dimensions, à grande échelle.</span></div></li>
-  <li><span class="y">2020</span><div><b>SimCLR</b> (Chen et al.). <span class="en">Contrastive learning <b>without labels</b>: the positive pair is two augmentations of the same image, the other images of the batch are negatives (InfoNCE loss). Methods like BYOL later avoided explicit negatives with other tricks.</span><span class="fr">Apprentissage contrastif <b>sans étiquettes</b> : la paire positive, ce sont deux augmentations de la même image, les autres images du batch sont les négatifs (loss InfoNCE). Des méthodes comme BYOL ont ensuite évité les négatifs explicites avec d'autres astuces.</span></div></li>
+  <li><span class="y">2020</span><div><b><a href="simclr-2020.html">SimCLR</a></b> (Chen et al.). <span class="en">Contrastive learning <b>without labels</b>: the positive pair is two augmentations of the same image, the other images of the batch are negatives (NT-Xent loss). <a href="simclr-2020.html">My notes on it</a>.</span><span class="fr">Apprentissage contrastif <b>sans étiquettes</b> : la paire positive, ce sont deux augmentations de la même image, les autres images du batch sont les négatifs (loss NT-Xent). <a href="simclr-2020.html">Mes notes dessus</a>.</span></div></li>
 </ul>
 
 <!-- ======================================================= 13 -->
@@ -551,42 +414,8 @@ footer .mono{font-size:12px;color:var(--faint)}
 </footer>
 </div>
 
+<script src="notes.js"></script>
 <script>
-const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const lang = () => document.documentElement.lang;
-
-/* ---------- language switch ---------- */
-const TITLES = {
-  en: 'Siamese networks & contrastive loss (Chopra, Hadsell & LeCun, 2005) · Eyub Celebioglu',
-  fr: 'Réseaux siamois et loss contrastive (Chopra, Hadsell & LeCun, 2005) · Eyub Celebioglu'
-};
-const langHooks = [];
-function setLang(l){
-  document.documentElement.lang = l;
-  document.title = TITLES[l];
-  document.querySelectorAll('.lang button').forEach(b => b.setAttribute('aria-pressed', b.dataset.l === l));
-  try { localStorage.setItem('lang', l); } catch (e) {}
-  langHooks.forEach(f => f());
-}
-document.querySelectorAll('.lang button').forEach(b => b.onclick = () => setLang(b.dataset.l));
-setLang(lang());
-
-/* ---------- maths ---------- */
-addEventListener('DOMContentLoaded', () => {
-  if (window.renderMathInElement) renderMathInElement(document.body, {
-    delimiters: [{left:'\\[', right:'\\]', display:true}, {left:'\\(', right:'\\)', display:false}],
-    throwOnError: false
-  });
-});
-
-/* ---------- canvas helper ---------- */
-function fit(cv){
-  const d = devicePixelRatio || 1, r = cv.getBoundingClientRect();
-  cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d);
-  const g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0);
-  return [g, r.width, r.height];
-}
-
 /* ---------- interactive demo: a tiny siamese model trained live ---------- */
 (() => {
   // toy "faces": 8-D vectors = identity + lighting/pose nuisance + noise; G_W = linear map 8 -> 2
@@ -597,7 +426,6 @@ function fit(cv){
   const readout = document.getElementById('readout');
   let rnd, ids, W, steps, hist, stride, running = false, started = false, visible = false;
 
-  function mulberry32(a){ return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
   const randn = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()); };
   const unit = () => { const v = Array.from({length: D}, randn), n = Math.hypot(...v); return v.map(x => x / n); };
 
@@ -808,74 +636,13 @@ const QUIZ = [
     a: 0, s: '#results',
     e: ['FA and FR trade off through the threshold; you cannot bring both to 0.', 'FA et FR s’échangent via le seuil ; impossible d’annuler les deux.'] }
 ];
-const qBox = document.getElementById('quiz-box');
-const bi = (en, fr) => `<span class="en">${en}</span><span class="fr">${fr}</span>`;
-const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
-qBox.innerHTML = QUIZ.map((x, i) => `
-  <div class="q" id="q${i}">
-    <div class="qt"><span class="qn">${i + 1}/${QUIZ.length}</span>${bi(esc(x.q[0]), esc(x.q[1]))}</div>
-    <div class="opts">${x.o.map((o, j) => `<label class="opt"><input type="radio" name="q${i}" value="${j}"><span>${bi(esc(o[0]), esc(o[1]))}</span></label>`).join('')}</div>
-    <div class="fb"></div>
-  </div>`).join('');
-
-const CAT = eyes => String.raw`   /\_____/\
-  /  ${eyes}  \
- ( ==  ^  == )
-  )         (
- (           )
-( (  )   (  ) )
-(__(__)___(__)__)`;
-const catOut = document.getElementById('cat-out'), catArt = document.getElementById('cat-art'), catSay = document.getElementById('cat-say'), catMsg = document.getElementById('cat-msg');
-let sayT;
-function showCat(score){
-  clearInterval(sayT);
-  const n = QUIZ.length, good = score >= 6, fr = lang() === 'fr';
-  catArt.innerHTML = CAT(good ? '<span class="hl">^</span>   <span class="hl">^</span>' : '<span class="hl">-</span>   <span class="hl">-</span>');
-  catOut.classList.add('on'); catOut.classList.remove('hop');
-  if (good){
-    void catOut.offsetWidth;   // force a reflow so the hop animation restarts
-    catOut.classList.add('hop');
-    const full = score === n ? 'nyaaaaaaa~ ♡' : 'nyaaa~';
-    let k = 0; catSay.textContent = '';
-    sayT = setInterval(() => { catSay.textContent = full.slice(0, ++k); if (k >= full.length) clearInterval(sayT); }, reduced ? 0 : 90);
-    catMsg.innerHTML = score === n
-      ? bi('Perfect score. You are ready for the exam.', 'Sans faute. Vous êtes prêt·e pour l’examen.')
-      : bi('Well done! Check the explanations above for the ones you missed.', 'Bien joué ! Regardez les explications au-dessus pour celles que vous avez ratées.');
-  } else {
-    catSay.textContent = 'zzz…';
-    catMsg.innerHTML = bi('The cat fell asleep. Re-read the linked sections and try again: you need 6/8 to wake it up.', 'Le chat s’est endormi. Relisez les sections indiquées et recommencez : il faut 6/8 pour le réveiller.');
-  }
-}
-document.getElementById('check').onclick = () => {
-  let score = 0, missing = 0;
-  QUIZ.forEach((x, i) => { if (!document.querySelector(`input[name=q${i}]:checked`)) missing++; });
-  if (missing){
-    document.getElementById('score').innerHTML = bi(`${missing} question(s) left`, `il reste ${missing} question(s)`);
-    return;
-  }
-  QUIZ.forEach((x, i) => {
-    const el = document.getElementById('q' + i), pick = +document.querySelector(`input[name=q${i}]:checked`).value, ok = pick === x.a;
-    if (ok) score++;
-    el.classList.add('done');
-    el.querySelectorAll('.opt').forEach((o, j) => { o.classList.toggle('right', j === x.a); o.classList.toggle('wrong', j === pick && !ok); o.querySelector('input').disabled = true; });
-    el.querySelector('.fb').innerHTML = (ok ? '✓ ' : '✗ ') + bi(esc(x.e[0]), esc(x.e[1])) + ` <a href="${x.s}">↑ section</a>`;
-  });
-  document.getElementById('score').textContent = `${score} / ${QUIZ.length}`;
-  document.getElementById('check').hidden = true;
-  document.getElementById('retry').hidden = false;
-  showCat(score);
-};
-document.getElementById('retry').onclick = () => {
-  QUIZ.forEach((x, i) => {
-    const el = document.getElementById('q' + i); el.classList.remove('done');
-    el.querySelectorAll('.opt').forEach(o => { o.classList.remove('right', 'wrong'); const r = o.querySelector('input'); r.disabled = false; r.checked = false; });
-  });
-  document.getElementById('score').textContent = '';
-  document.getElementById('check').hidden = false;
-  document.getElementById('retry').hidden = true;
-  catOut.classList.remove('on'); clearInterval(sayT);
-  document.getElementById('quiz').scrollIntoView();
-};
+initNotes({
+  titles: {
+    en: 'Siamese networks & contrastive loss (Chopra, Hadsell & LeCun, 2005) · Eyub Celebioglu',
+    fr: 'Réseaux siamois et loss contrastive (Chopra, Hadsell & LeCun, 2005) · Eyub Celebioglu'
+  },
+  quiz: QUIZ
+});
 </script>
 </body>
 </html>

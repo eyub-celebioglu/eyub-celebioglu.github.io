@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+// pick the language before the page renders (no flash): ?lang=fr > saved choice > English
+(function(){var l='en';try{l=new URLSearchParams(location.search).get('lang')||localStorage.getItem('lang')||'en'}catch(e){}document.documentElement.lang=l==='fr'?'fr':'en'})();
+</script>
+<title>SimCLR and the NT-Xent loss (Chen et al., 2020) · Eyub Celebioglu</title>
+<meta name="description" content="An illustrated walkthrough of SimCLR (Chen, Kornblith, Norouzi & Hinton, ICML 2020): contrastive learning without labels, NT-Xent, temperature, projection head, with a model you can train in the browser and a quiz. English / français.">
+<meta property="og:title" content="SimCLR explained: contrastive learning without labels (Chen et al., 2020)">
+<meta property="og:description" content="Paper notes for students: why a network can win at its task and still learn nothing useful, what the temperature does, and why we throw away the projection head. Interactive demo + quiz.">
+<meta property="og:type" content="article">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="notes.css">
+<style>
+/* temperature widget */
+.tau-row{display:flex;align-items:center;gap:12px;font-family:var(--mono);font-size:13.5px;margin-top:4px}
+.tau-row input{flex:1;accent-color:var(--fg)}
+.bars{display:grid;gap:3px;margin-top:14px}
+.bar{display:grid;grid-template-columns:150px 1fr 48px;gap:10px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--dim)}
+.bar i{display:block;height:13px;background:var(--faint)}
+.bar.pos i{background:var(--link)} .bar.pos{color:var(--link)}
+.bar.fneg i{background:var(--accent)} .bar.fneg{color:var(--accent)}
+.bar .v{text-align:right}
+@media (max-width:520px){.bar{grid-template-columns:104px 1fr 40px;font-size:11px}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<nav class="top">
+  <a class="back" href="../">← Eyub Celebioglu</a>
+  <div class="lang" role="group" aria-label="Language">
+    <button type="button" data-l="en">EN</button><button type="button" data-l="fr">FR</button>
+  </div>
+</nav>
+
+<div class="kicker"><span class="en">Paper notes · for students</span><span class="fr">Notes de lecture · pour étudiants</span></div>
+<h1>A Simple Framework for Contrastive Learning of Visual Representations</h1>
+<div class="meta"><b>Ting Chen, Simon Kornblith, Mohammad Norouzi, Geoffrey Hinton</b> · ICML 2020 · Google Research</div>
+<div class="links">
+  <a href="https://arxiv.org/pdf/2002.05709" target="_blank" rel="noopener"><span class="en">paper (PDF)</span><span class="fr">article (PDF)</span></a><span class="sep">/</span><a href="https://arxiv.org/abs/2002.05709" target="_blank" rel="noopener">arXiv</a><span class="sep">/</span><span class="mono" style="font-size:13px;color:var(--dim)"><span class="en">~25 min read · interactive demos · quiz</span><span class="fr">~25 min de lecture · démos interactives · quiz</span></span>
+</div>
+
+<p class="intro en">Second set of notes for the same exam, after <a href="chopra-2005.html">Chopra et al. (2005)</a>, which is the ancestor of this method. Again, I tried to keep what really matters to understand the paper. If it helps you too, great.</p>
+<p class="intro fr">Deuxième série de notes pour le même examen, après <a href="chopra-2005.html">Chopra et al. (2005)</a>, l'ancêtre de cette méthode. Là encore, j'ai essayé de garder ce qui compte vraiment pour comprendre l'article. Si ça peut vous aider aussi, tant mieux.</p>
+
+<div class="box">
+  <div class="t"><span class="en">The paper in 5 sentences</span><span class="fr">L'article en 5 phrases</span></div>
+  <ol class="en">
+    <li>SimCLR learns image representations <b>without any label</b> (self-supervised).</li>
+    <li>Each image gives <b>two augmented views</b> (crop, colour, blur): they form the <b>positive pair</b>. All the other views of the batch are <b>negatives</b>.</li>
+    <li>Encoder \(f\) (ResNet-50) gives \(h\); an MLP head \(g\) gives \(z\); the <b>NT-Xent</b> loss is applied on \(z\). After training, <b>we throw away \(g\) and keep \(h\)</b>.</li>
+    <li>The negatives prevent the collapse; the strong augmentations remove the shortcuts that would make the task too easy.</li>
+    <li>Only three things separate it from standard supervised training: <b>the augmentations, the nonlinear head and the loss</b>. Result: 76.5% in linear evaluation with a ResNet-50 (4×), matching a supervised ResNet-50.</li>
+  </ol>
+  <ol class="fr">
+    <li>SimCLR apprend des représentations d'images <b>sans aucune étiquette</b> (auto-supervisé).</li>
+    <li>Chaque image donne <b>deux vues augmentées</b> (crop, couleur, flou) : elles forment la <b>paire positive</b>. Toutes les autres vues du batch sont des <b>négatifs</b>.</li>
+    <li>L'encodeur \(f\) (ResNet-50) donne \(h\) ; une tête MLP \(g\) donne \(z\) ; la loss <b>NT-Xent</b> s'applique sur \(z\). Après l'entraînement, <b>on jette \(g\) et on garde \(h\)</b>.</li>
+    <li>Les négatifs empêchent le collapse ; les augmentations fortes suppriment les raccourcis qui rendraient la tâche trop facile.</li>
+    <li>Seules trois choses le séparent de l'entraînement supervisé classique : <b>les augmentations, la tête non linéaire et la loss</b>. Résultat : 76,5 % en évaluation linéaire avec un ResNet-50 (4×), au niveau d'un ResNet-50 supervisé.</li>
+  </ol>
+</div>
+
+<nav class="toc" aria-label="Contents">
+  <a href="#idea"><span class="n">01</span><span class="en">The idea</span><span class="fr">L'idée</span></a>
+  <a href="#components"><span class="n">02</span><span class="en">The four components</span><span class="fr">Les quatre composants</span></a>
+  <a href="#loss"><span class="n">03</span><span class="en">The NT-Xent loss</span><span class="fr">La loss NT-Xent</span></a>
+  <a href="#traps"><span class="n">04</span><span class="en">Collapse vs shortcut</span><span class="fr">Collapse et raccourci</span></a>
+  <a href="#demo"><span class="n">05</span><span class="en">Try it: train it live</span><span class="fr">Entraînez-le en direct</span></a>
+  <a href="#temperature"><span class="n">06</span><span class="en">Temperature</span><span class="fr">La température</span></a>
+  <a href="#aug"><span class="n">07</span><span class="en">Augmentations</span><span class="fr">Les augmentations</span></a>
+  <a href="#head"><span class="n">08</span><span class="en">Why throw away the head?</span><span class="fr">Pourquoi jeter la tête ?</span></a>
+  <a href="#batch"><span class="n">09</span><span class="en">Big batches, Global BN</span><span class="fr">Grands batchs, Global BN</span></a>
+  <a href="#eval"><span class="n">10</span><span class="en">Evaluation and results</span><span class="fr">Évaluation et résultats</span></a>
+  <a href="#limits"><span class="n">11</span><span class="en">Critical reading</span><span class="fr">Lecture critique</span></a>
+  <a href="#chopra"><span class="n">12</span><span class="en">Compared with Chopra 2005</span><span class="fr">Comparaison avec Chopra 2005</span></a>
+  <a href="#quiz"><span class="n">13</span><span class="en">Quiz</span><span class="fr">Quiz</span></a>
+</nav>
+
+<!-- ======================================================= 1 -->
+<h2 id="idea"><span class="n">01</span><span class="en">The idea</span><span class="fr">L'idée</span></h2>
+<div class="en">
+<p>Labels are expensive. <b>Self-supervised</b> learning avoids them: the model builds its own task from the data, with a right answer that is known automatically. Here the task is: "<b>among all these views, which one comes from the same image as me?</b>"</p>
+<p>Nobody annotated anything. The algorithm knows which view is the partner because it created both (they sit at indices \(2k-1\) and \(2k\) in the batch).</p>
+<p>The authors call it <b>simple</b> because previous methods needed a specialized architecture or a <b>memory bank</b> storing negatives. SimCLR uses a standard ResNet and takes its negatives from the current batch. They also stress that almost every component already existed: the contribution is the <b>combination</b>, and the systematic study of what each part brings.</p>
+</div>
+<div class="fr">
+<p>Les étiquettes coûtent cher. L'apprentissage <b>auto-supervisé</b> s'en passe : le modèle fabrique sa propre tâche à partir des données, avec une bonne réponse connue automatiquement. Ici, la tâche est : « <b>parmi toutes ces vues, laquelle vient de la même image que moi ?</b> »</p>
+<p>Personne n'a rien annoté. L'algorithme sait quelle vue est la partenaire puisque c'est lui qui a créé les deux (elles sont aux indices \(2k-1\) et \(2k\) du batch).</p>
+<p>Les auteurs parlent de méthode <b>simple</b> parce que les travaux précédents demandaient une architecture spéciale ou une <b>memory bank</b> pour stocker les négatifs. SimCLR utilise un ResNet standard et prend ses négatifs dans le batch courant. Ils soulignent aussi que presque tous les composants existaient déjà : l'apport, c'est la <b>combinaison</b>, et l'étude systématique de ce que chaque partie apporte.</p>
+</div>
+
+<!-- ======================================================= 2 -->
+<h2 id="components"><span class="n">02</span><span class="en">The four components</span><span class="fr">Les quatre composants</span></h2>
+<pre class="ascii en" aria-label="SimCLR architecture diagram">
+           ┌─ t  ─▶ view i ─▶ [ f ] ─▶ h_i ─▶ [ g ] ─▶ z_i ─┐
+ image x ──┤                                                ├─▶ <b>NT-Xent</b>
+           └─ t' ─▶ view j ─▶ [ f ] ─▶ h_j ─▶ [ g ] ─▶ z_j ─┘
+                             same f    <b>kept</b>    same g    thrown away</pre>
+<pre class="ascii fr" aria-label="Schéma de l'architecture SimCLR">
+           ┌─ t  ─▶ vue i ──▶ [ f ] ─▶ h_i ─▶ [ g ] ─▶ z_i ─┐
+ image x ──┤                                                ├─▶ <b>NT-Xent</b>
+           └─ t' ─▶ vue j ──▶ [ f ] ─▶ h_j ─▶ [ g ] ─▶ z_j ─┘
+                             même f    <b>gardé</b>   même g    jeté</pre>
+<ul class="list en">
+  <li><b>Augmentation:</b> a random chain of crop and resize (with flip), colour distortion and Gaussian blur. Two independent draws give the two views.</li>
+  <li><b>Encoder \(f\):</b> a ResNet-50. \(h = f(\tilde{x})\) is the 2048-dimensional <b>representation</b>, the thing we want.</li>
+  <li><b>Projection head \(g\):</b> an MLP with one hidden layer, \(z = W^{(2)}\sigma(W^{(1)}h)\) with \(\sigma\) = ReLU, down to 128 dimensions. It only exists during training.</li>
+  <li><b>Contrastive loss:</b> applied on \(z\), see the next section.</li>
+</ul>
+<ul class="list fr">
+  <li><b>Augmentation :</b> une chaîne aléatoire de crop et redimensionnement (avec retournement), distorsion de couleur et flou gaussien. Deux tirages indépendants donnent les deux vues.</li>
+  <li><b>Encodeur \(f\) :</b> un ResNet-50. \(h = f(\tilde{x})\) est la <b>représentation</b> en 2048 dimensions, celle qu'on veut.</li>
+  <li><b>Tête de projection \(g\) :</b> un MLP à une couche cachée, \(z = W^{(2)}\sigma(W^{(1)}h)\) avec \(\sigma\) = ReLU, vers 128 dimensions. Elle n'existe que pendant l'entraînement.</li>
+  <li><b>Loss contrastive :</b> appliquée sur \(z\), voir la section suivante.</li>
+</ul>
+<div class="box">
+  <div class="t"><span class="en">Counting (often asked)</span><span class="fr">Le comptage (souvent demandé)</span></div>
+  <p class="en">A batch of \(N\) images gives \(2N\) views. For one view: <b>1 positive</b> and <b>\(2(N-1)\) negatives</b>; the view itself is excluded. With \(N = 3\): 6 views, 1 positive, 4 negatives. With \(N = 8192\): 16,382 negatives.</p>
+  <p class="fr">Un batch de \(N\) images donne \(2N\) vues. Pour une vue : <b>1 positive</b> et <b>\(2(N-1)\) négatifs</b> ; la vue elle-même est exclue. Avec \(N = 3\) : 6 vues, 1 positive, 4 négatifs. Avec \(N = 8192\) : 16&nbsp;382 négatifs.</p>
+</div>
+
+<!-- ======================================================= 3 -->
+<h2 id="loss"><span class="n">03</span><span class="en">The NT-Xent loss</span><span class="fr">La loss NT-Xent</span></h2>
+<p class="en">NT-Xent stands for <b>N</b>ormalized <b>T</b>emperature-scaled <b>Cross-E</b>ntropy. For a positive pair \((i,j)\):</p>
+<p class="fr">NT-Xent signifie <b>N</b>ormalized <b>T</b>emperature-scaled <b>Cross-E</b>ntropy (entropie croisée normalisée, avec température). Pour une paire positive \((i,j)\) :</p>
+<div class="eq">\[ \ell_{i,j} = -\log \frac{\exp(\mathrm{sim}(z_i, z_j)/\tau)}{\sum_{k=1}^{2N} \mathbb{1}_{[k \neq i]} \exp(\mathrm{sim}(z_i, z_k)/\tau)} \qquad \mathrm{sim}(u,v) = \frac{u^\top v}{\lVert u \rVert \lVert v \rVert} \]</div>
+<ul class="list en">
+  <li><b>Numerator:</b> the positive pair, to bring closer. <b>Denominator:</b> every other view, to push away.</li>
+  <li>\(\mathbb{1}_{[k \neq i]}\) removes the view itself: its similarity is always 1, it teaches nothing.</li>
+  <li>It is simply a <b>cross-entropy on a softmax</b>: each view must find its partner among the \(2N-1\) others. The softmax puts the candidates in <b>competition</b>.</li>
+  <li>The total loss averages over all pairs, <b>in both directions</b>: \(\ell(i,j)\) and \(\ell(j,i)\).</li>
+  <li>The loss has no weights of its own: it is a calculation on the batch's \(2N\) vectors \(z\). The gradient flows back from the loss to \(z\), \(g\), \(h\) and \(f\).</li>
+  <li>The loss was already used in earlier work; this paper gives it the name NT-Xent.</li>
+</ul>
+<ul class="list fr">
+  <li><b>Numérateur :</b> la paire positive, à rapprocher. <b>Dénominateur :</b> toutes les autres vues, à éloigner.</li>
+  <li>\(\mathbb{1}_{[k \neq i]}\) retire la vue elle-même : sa similarité vaut toujours 1, elle n'apprend rien.</li>
+  <li>C'est simplement une <b>entropie croisée sur un softmax</b> : chaque vue doit retrouver sa partenaire parmi les \(2N-1\) autres. Le softmax met les candidates <b>en compétition</b>.</li>
+  <li>La loss totale fait la moyenne sur toutes les paires, <b>dans les deux sens</b> : \(\ell(i,j)\) et \(\ell(j,i)\).</li>
+  <li>La loss n'a pas de poids à elle : c'est un calcul sur les \(2N\) vecteurs \(z\) du batch. Le gradient remonte de la loss vers \(z\), \(g\), \(h\) puis \(f\).</li>
+  <li>Cette loss existait déjà dans des travaux antérieurs ; l'article lui donne le nom de NT-Xent.</li>
+</ul>
+
+<!-- ======================================================= 4 -->
+<h2 id="traps"><span class="n">04</span><span class="en">Two ways to cheat: collapse and shortcut</span><span class="fr">Deux façons de tricher : collapse et raccourci</span></h2>
+<div class="tw"><table>
+  <tr><th></th><th><span class="en">What the network does</span><span class="fr">Ce que fait le réseau</span></th><th><span class="en">What stops it</span><span class="fr">Ce qui l'en empêche</span></th></tr>
+  <tr><td><b>Collapse</b></td><td><span class="en">same \(z\) for every image</span><span class="fr">le même \(z\) pour toutes les images</span></td><td><span class="en">the <b>negatives</b>: if everything is identical, the loss is stuck at \(\log(2N-1)\)</span><span class="fr">les <b>négatifs</b> : si tout est identique, la loss reste bloquée à \(\log(2N-1)\)</span></td></tr>
+  <tr><td><b><span class="en">Shortcut</span><span class="fr">Raccourci</span></b></td><td><span class="en">recognizes a pair from a trivial clue (colour histogram, BN statistics)</span><span class="fr">reconnaît une paire grâce à un indice trivial (histogramme de couleurs, statistiques de BN)</span></td><td><span class="en">strong <b>augmentations</b> (colour distortion) and <b>Global BN</b></span><span class="fr">des <b>augmentations</b> fortes (distorsion de couleur) et le <b>Global BN</b></span></td></tr>
+</table></div>
+<div class="box warn">
+  <div class="t"><span class="en">Classic trap</span><span class="fr">Piège classique</span></div>
+  <p class="en">These are two different problems. The contrast is in the <b>loss</b>, not in the augmentations. What they have in common: the network finds an easy way to lower the loss without learning what is in the images.</p>
+  <p class="fr">Ce sont deux problèmes différents. Le contraste est dans la <b>loss</b>, pas dans les augmentations. Leur point commun : le réseau trouve une façon facile de faire baisser la loss sans apprendre le contenu des images.</p>
+</div>
+<p class="en" style="font-size:15px;color:var(--dim)">Note: the word "collapse" comes from <a href="chopra-2005.html#collapse">Chopra et al.</a>, the SimCLR paper never uses it. The \(\log(2N-1)\) argument is easy to check by replacing every similarity with the same value in the formula above.</p>
+<p class="fr" style="font-size:15px;color:var(--dim)">Remarque : le mot « collapse » vient de <a href="chopra-2005.html#collapse">Chopra et al.</a>, l'article SimCLR ne l'emploie jamais. L'argument du \(\log(2N-1)\) se vérifie en remplaçant toutes les similarités par une même valeur dans la formule ci-dessus.</p>
+
+<!-- ======================================================= 5 -->
+<h2 id="demo"><span class="n">05</span><span class="en">Try it: train it live</span><span class="fr">À vous : entraînez-le en direct</span></h2>
+<p class="en">This is the deepest message of the paper: <b>winning at the task does not mean learning good representations.</b> Below, a tiny SimCLR trains in your browser, without labels. Each "image" has a hidden class, some content, and a colour unique to that image. Let it train, then <b>untick "colour distortion"</b>: the task accuracy jumps, and the quality of the representation drops. Then <b>untick "negatives"</b>.</p>
+<p class="fr">C'est le message le plus profond de l'article : <b>réussir la tâche ne veut pas dire apprendre de bonnes représentations.</b> Ci-dessous, un petit SimCLR s'entraîne dans votre navigateur, sans étiquettes. Chaque « image » a une classe cachée, un contenu, et une couleur propre à cette image. Laissez-le s'entraîner, puis <b>décochez « distorsion de couleur »</b> : la réussite de la tâche grimpe, et la qualité de la représentation tombe bien plus bas. Puis <b>décochez « négatifs »</b>.</p>
+<div class="demo">
+  <div class="demo-grid">
+    <figure style="margin:0"><canvas id="sim" aria-label="Similarity matrix between the views of 12 test images"></canvas>
+      <figcaption><span class="en">Similarity between \(z\) of 24 test views. Sorted by hidden class; partners are side by side.</span><span class="fr">Similarité entre les \(z\) de 24 vues de test. Triées par classe cachée ; les partenaires sont côte à côte.</span></figcaption></figure>
+    <figure style="margin:0"><canvas id="chart" aria-label="Task accuracy and linear evaluation during training"></canvas>
+      <figcaption><span class="en"><span style="color:var(--link)">■</span> task accuracy · <span style="color:var(--accent)">■</span> linear evaluation · pale: previous run</span><span class="fr"><span style="color:var(--link)">■</span> réussite de la tâche · <span style="color:var(--accent)">■</span> évaluation linéaire · pâle : essai précédent</span></figcaption></figure>
+  </div>
+  <div class="ctrl">
+    <button class="btn" id="play" type="button"></button>
+    <button class="btn ghost" id="reset" type="button"><span class="en">New run</span><span class="fr">Nouvel essai</span></button>
+    <label><input type="checkbox" id="dist" checked> <span class="en">colour distortion</span><span class="fr">distorsion de couleur</span></label>
+    <label><input type="checkbox" id="neg" checked> <span class="en">negatives (denominator)</span><span class="fr">négatifs (dénominateur)</span></label>
+  </div>
+  <div class="readout" id="readout"></div>
+</div>
+<p class="en" style="font-size:15px;color:var(--dim)">Real training with hand-derived gradients and Adam, on a toy problem: \(f\) is a linear layer + tanh (9 inputs, 4 outputs), \(g\) an MLP with ReLU, \(\tau = 0.1\), batch of 24 images. Inputs are vectors, not photos, and "colour" is 3 coordinates, so this illustrates the mechanism, not the paper's numbers. Linear evaluation: a ridge classifier trained on frozen \(h\) with the hidden labels, tested on held-out images (chance: 25%). Changing the colour option restarts from the same initial weights so both runs can be compared. In this toy, the paper's gap between \(h\) and \(z\) (section 08) is not stable, so I do not show it here.</p>
+<p class="fr" style="font-size:15px;color:var(--dim)">Vrai entraînement, avec gradients dérivés à la main et Adam, sur un problème jouet : \(f\) est une couche linéaire + tanh (9 entrées, 4 sorties), \(g\) un MLP avec ReLU, \(\tau = 0{,}1\), batch de 24 images. Les entrées sont des vecteurs, pas des photos, et la « couleur » tient en 3 coordonnées : ça illustre le mécanisme, pas les chiffres de l'article. Évaluation linéaire : un classifieur ridge entraîné sur \(h\) figé avec les classes cachées, testé sur d'autres images (hasard : 25 %). Changer l'option couleur relance depuis les mêmes poids initiaux pour comparer les deux essais. Dans ce modèle jouet, l'écart de l'article entre \(h\) et \(z\) (section 08) n'est pas stable : je ne le montre donc pas ici.</p>
+
+<!-- ======================================================= 6 -->
+<h2 id="temperature"><span class="n">06</span><span class="en">Temperature and normalization</span><span class="fr">Température et normalisation</span></h2>
+<p class="en">The temperature \(\tau\) decides how the softmax shares its attention. Move the slider: each bar is one candidate's probability in the denominator, which is also the weight of its gradient. So <b>NT-Xent automatically focuses on the hard negatives</b>, the ones closest to the anchor.</p>
+<p class="fr">La température \(\tau\) décide comment le softmax répartit son attention. Bougez le curseur : chaque barre est la probabilité d'une candidate dans le dénominateur, qui est aussi le poids de son gradient. La <b>NT-Xent se concentre donc automatiquement sur les négatifs difficiles</b>, ceux qui sont les plus proches de l'ancre.</p>
+<div class="demo">
+  <div class="tau-row"><label for="tau">τ</label><input type="range" id="tau" min="-1.7" max="0.3" step="0.01" value="-1" aria-label="Temperature"><span id="tauv" style="min-width:48px;text-align:right"></span></div>
+  <div class="bars" id="bars"></div>
+  <div class="readout" id="taureadout"></div>
+</div>
+<p class="en" style="font-size:15px;color:var(--dim)">Made-up similarities for 12 candidates, computed with the real formula. The red bar is a negative of the same class as the anchor: a <b>false negative</b>.</p>
+<p class="fr" style="font-size:15px;color:var(--dim)">Similarités inventées pour 12 candidates, calculées avec la vraie formule. La barre rouge est un négatif de la même classe que l'ancre : un <b>faux négatif</b>.</p>
+<ul class="list en">
+  <li><b>\(\tau\) too small:</b> pointy softmax, low entropy. Only 2 or 3 candidates count, possibly false negatives.</li>
+  <li><b>\(\tau\) too large:</b> flat softmax. The easy negatives drown out the hard ones.</li>
+  <li><b>\(\ell_2\) normalization:</b> dividing \(z\) by its length puts all vectors on a sphere, so similarity depends only on the angle. Without it, the task is solved better but the representation is worse.</li>
+</ul>
+<ul class="list fr">
+  <li><b>\(\tau\) trop petit :</b> softmax pointu, entropie faible. Seules 2 ou 3 candidates comptent, y compris des faux négatifs.</li>
+  <li><b>\(\tau\) trop grand :</b> softmax plat. Les négatifs faciles noient les difficiles.</li>
+  <li><b>Normalisation \(\ell_2\) :</b> diviser \(z\) par sa longueur met tous les vecteurs sur une sphère : la similarité ne dépend que de l'angle. Sans elle, la tâche est mieux réussie mais la représentation est moins bonne.</li>
+</ul>
+<div class="tw"><table>
+  <tr><th>\(\ell_2\) norm</th><th class="num">τ</th><th class="num"><span class="en">Entropy</span><span class="fr">Entropie</span></th><th class="num"><span class="en">Task acc.</span><span class="fr">Tâche</span></th><th class="num">Top-1</th></tr>
+  <tr><td><span class="en">yes</span><span class="fr">oui</span></td><td class="num">0.05</td><td class="num">1.0</td><td class="num">90.5</td><td class="num">59.7</td></tr>
+  <tr><td><span class="en">yes</span><span class="fr">oui</span></td><td class="num"><b>0.1</b></td><td class="num">4.5</td><td class="num">87.8</td><td class="num"><b>64.4</b></td></tr>
+  <tr><td><span class="en">yes</span><span class="fr">oui</span></td><td class="num">0.5</td><td class="num">8.2</td><td class="num">68.2</td><td class="num">60.7</td></tr>
+  <tr><td><span class="en">yes</span><span class="fr">oui</span></td><td class="num">1</td><td class="num">8.3</td><td class="num">59.1</td><td class="num">58.0</td></tr>
+  <tr><td><span class="en">no</span><span class="fr">non</span></td><td class="num">10</td><td class="num">0.5</td><td class="num">91.7</td><td class="num">57.2</td></tr>
+  <tr><td><span class="en">no</span><span class="fr">non</span></td><td class="num">100</td><td class="num">0.5</td><td class="num">92.1</td><td class="num">57.0</td></tr>
+</table></div>
+<p class="en" style="font-size:15px;color:var(--dim)">Table 5 of the paper, over 4096 examples (the maximum entropy is \(\ln 4096 \approx 8.3\)). Look at the last column against the "task" column: the best task score is <b>not</b> the best representation.</p>
+<p class="fr" style="font-size:15px;color:var(--dim)">Table 5 de l'article, sur 4096 exemples (l'entropie maximale vaut \(\ln 4096 \approx 8{,}3\)). Comparez la dernière colonne à la colonne « tâche » : le meilleur score à la tâche n'est <b>pas</b> la meilleure représentation.</p>
+<h3><span class="en">Why NT-Xent beats the other losses</span><span class="fr">Pourquoi la NT-Xent bat les autres losses</span></h3>
+<div class="tw"><table>
+  <tr><th class="num">Margin</th><th class="num">NT-Logistic</th><th class="num">Margin (sh)</th><th class="num">NT-Logistic (sh)</th><th class="num">NT-Xent</th></tr>
+  <tr><td class="num">50.9</td><td class="num">51.6</td><td class="num">57.5</td><td class="num">57.9</td><td class="num"><b>63.9</b></td></tr>
+</table></div>
+<p class="en">Margin and logistic losses judge each negative <b>on its own</b>, so they do not weigh negatives by their hardness. They need <b>semi-hard negative mining</b> ("sh"), and they still stay well below NT-Xent (table 4).</p>
+<p class="fr">Les losses à marge et logistiques jugent chaque négatif <b>tout seul</b> : elles ne pondèrent pas les négatifs selon leur difficulté. Il leur faut du <b>semi-hard negative mining</b> (« sh »), et elles restent quand même bien en dessous de la NT-Xent (table 4).</p>
+
+<!-- ======================================================= 7 -->
+<h2 id="aug"><span class="n">07</span><span class="en">Augmentations define the task</span><span class="fr">Les augmentations définissent la tâche</span></h2>
+<div class="en">
+<p>Other methods define their prediction task through the architecture. Here, a random crop alone already creates two tasks: predicting a <b>local view from a global one</b>, and predicting an <b>adjacent view</b> (figure 3). No special network needed.</p>
+<p><b>No single augmentation is enough</b> (figure 5, linear evaluation, augmentations applied to one branch only, on top of a random crop):</p>
+</div>
+<div class="fr">
+<p>D'autres méthodes définissent leur tâche de prédiction via l'architecture. Ici, un simple crop aléatoire crée déjà deux tâches : prédire une <b>vue locale à partir d'une vue globale</b>, et prédire une <b>vue voisine</b> (figure 3). Pas besoin de réseau spécial.</p>
+<p><b>Aucune augmentation seule ne suffit</b> (figure 5, évaluation linéaire, augmentations appliquées à une seule branche, en plus d'un crop aléatoire) :</p>
+</div>
+<div class="tw"><table>
+  <tr><th><span class="en">Crop only</span><span class="fr">Crop seul</span></th><th><span class="en">Colour only</span><span class="fr">Couleur seule</span></th><th><span class="en">Crop then colour</span><span class="fr">Crop puis couleur</span></th><th><span class="en">Colour then crop</span><span class="fr">Couleur puis crop</span></th></tr>
+  <tr><td class="num" style="text-align:left">33.1</td><td class="num" style="text-align:left">18.8</td><td class="num" style="text-align:left"><b>56.3</b></td><td class="num" style="text-align:left">55.8</td></tr>
+</table></div>
+<div class="en">
+<p>The paper notes that the network can <b>almost perfectly identify the positive pairs</b> even with a single augmentation. Composing them makes the task harder, and the representation much better.</p>
+<p><b>Why colour?</b> The authors <i>conjecture</i> that crops of the same image share a similar colour distribution. Figure 6 shows that colour histograms alone are enough to distinguish images: the network can use this shortcut. With colour distortion the histograms differ, so it must look at shapes. That is exactly what the demo above reproduces.</p>
+</div>
+<div class="fr">
+<p>L'article note que le réseau <b>retrouve presque parfaitement les paires positives</b> même avec une seule augmentation. Les combiner rend la tâche plus difficile, et la représentation bien meilleure.</p>
+<p><b>Pourquoi la couleur ?</b> Les auteurs <i>conjecturent</i> que les crops d'une même image partagent une distribution de couleurs similaire. La figure 6 montre que les histogrammes de couleurs suffisent à distinguer les images : le réseau peut utiliser ce raccourci. Avec la distorsion de couleur, les histogrammes diffèrent, donc il doit regarder les formes. C'est exactement ce que reproduit la démo plus haut.</p>
+</div>
+<div class="tw"><table>
+  <tr><th><span class="en">Colour strength</span><span class="fr">Force de la couleur</span></th><th class="num">1/8</th><th class="num">1/4</th><th class="num">1/2</th><th class="num">1</th><th class="num">1 + <span class="en">blur</span><span class="fr">flou</span></th><th class="num">AutoAug</th></tr>
+  <tr><td>SimCLR</td><td class="num">59.6</td><td class="num">61.0</td><td class="num">62.6</td><td class="num">63.2</td><td class="num"><b>64.5</b></td><td class="num">61.1</td></tr>
+  <tr><td><span class="en">Supervised</span><span class="fr">Supervisé</span></td><td class="num">77.0</td><td class="num">76.7</td><td class="num">76.5</td><td class="num">75.7</td><td class="num">75.4</td><td class="num">77.1</td></tr>
+</table></div>
+<p class="en">How to read table 1: more colour helps SimCLR and slightly hurts supervised learning, so <b>contrastive learning needs stronger augmentations</b>. It does <b>not</b> say SimCLR beats supervised learning.</p>
+<p class="fr">Comment lire la table 1 : plus de couleur aide SimCLR et gêne un peu le supervisé, donc <b>le contrastif a besoin d'augmentations plus fortes</b>. Elle ne dit <b>pas</b> que SimCLR bat le supervisé.</p>
+
+<!-- ======================================================= 8 -->
+<h2 id="head"><span class="n">08</span><span class="en">Why throw away the head?</span><span class="fr">Pourquoi jeter la tête ?</span></h2>
+<p class="en">Figure 8 scores \(h\) depending on the head used during training: <b>no head ≈ 50%, linear ≈ 61%, nonlinear ≈ 64%</b> (the paper says +3% against linear, more than 10% against none). The output dimension of \(z\) barely matters. And even with the nonlinear head, <b>\(h\) is better than \(z\) by more than 10%</b>.</p>
+<p class="fr">La figure 8 note \(h\) selon la tête utilisée à l'entraînement : <b>sans tête ≈ 50 %, linéaire ≈ 61 %, non linéaire ≈ 64 %</b> (l'article dit +3 % par rapport au linéaire, plus de 10 % par rapport à sans tête). La dimension de \(z\) ne change presque rien. Et même avec la tête non linéaire, <b>\(h\) est meilleur que \(z\) de plus de 10 %</b>.</p>
+<p class="en"><b>Why?</b> The authors' conjecture: the loss trains \(z\) to be <b>invariant</b> to the augmentations, so \(z\) loses information such as colour or orientation, which could be useful later. \(g\) absorbs that loss, and \(h\) can keep the information. They test it by trying to predict the applied transformation:</p>
+<p class="fr"><b>Pourquoi ?</b> La conjecture des auteurs : la loss entraîne \(z\) à être <b>invariant</b> aux augmentations, donc \(z\) perd des informations comme la couleur ou l'orientation, qui pourraient servir plus tard. \(g\) absorbe cette perte, et \(h\) peut garder l'information. Ils le testent en essayant de prédire la transformation appliquée :</p>
+<div class="tw"><table>
+  <tr><th><span class="en">What to predict</span><span class="fr">À prédire</span></th><th class="num"><span class="en">Chance</span><span class="fr">Hasard</span></th><th class="num">\(h\)</th><th class="num">\(z = g(h)\)</th></tr>
+  <tr><td><span class="en">colour vs grayscale</span><span class="fr">couleur ou noir et blanc</span></td><td class="num">80</td><td class="num"><b>99.3</b></td><td class="num">97.4</td></tr>
+  <tr><td>rotation</td><td class="num">25</td><td class="num"><b>67.6</b></td><td class="num">25.6</td></tr>
+  <tr><td><span class="en">original vs corrupted</span><span class="fr">original ou abîmée</span></td><td class="num">50</td><td class="num"><b>99.5</b></td><td class="num">59.6</td></tr>
+  <tr><td><span class="en">original vs Sobel filtered</span><span class="fr">original ou filtre de Sobel</span></td><td class="num">50</td><td class="num"><b>96.6</b></td><td class="num">56.3</td></tr>
+</table></div>
+<p class="en">In this experiment \(z\) has the same size as \(h\) (2048): the size is not what erases the information, the loss is. And \(g\) cannot erase the content of the image, otherwise negatives would get closer and the loss would rise.</p>
+<p class="fr">Dans cette expérience, \(z\) a la même taille que \(h\) (2048) : ce n'est pas la taille qui efface l'information, c'est la loss. Et \(g\) ne peut pas effacer le contenu de l'image, sinon les négatifs se rapprocheraient et la loss monterait.</p>
+
+<!-- ======================================================= 9 -->
+<h2 id="batch"><span class="n">09</span><span class="en">Big batches, big models, Global BN</span><span class="fr">Grands batchs, gros modèles, Global BN</span></h2>
+<div class="en">
+<ul class="list">
+  <li><b>Batch sizes from 256 to 8192</b>, with the LARS optimizer for stability, on 32 to 128 TPU cores.</li>
+  <li><b>Figure 9:</b> with few epochs, large batches help a lot (more negatives per step). With 1000 epochs, the gap mostly disappears. Training longer also provides more negatives.</li>
+  <li><b>Figure 7:</b> deeper and wider is better, and the gap with supervised learning shrinks as the model grows: unsupervised learning benefits more from bigger models.</li>
+</ul>
+<p><b>Global BN.</b> With a batch spread over several devices, batch normalization usually computes its mean and variance per device. The two views of a pair sit on the same device, so they share these statistics: a local <b>information leak</b> that the model can exploit to improve its prediction accuracy without improving its representations. The fix is to aggregate the BN mean and variance over all devices. Another shortcut, another fix.</p>
+</div>
+<div class="fr">
+<ul class="list">
+  <li><b>Batchs de 256 à 8192</b>, avec l'optimiseur LARS pour stabiliser, sur 32 à 128 cœurs de TPU.</li>
+  <li><b>Figure 9 :</b> avec peu d'époques, les grands batchs aident beaucoup (plus de négatifs par étape). Avec 1000 époques, l'écart disparaît presque. Entraîner plus longtemps fournit aussi plus de négatifs.</li>
+  <li><b>Figure 7 :</b> plus profond et plus large, c'est mieux, et l'écart avec le supervisé se réduit quand le modèle grossit : le non supervisé profite davantage des gros modèles.</li>
+</ul>
+<p><b>Global BN.</b> Avec un batch réparti sur plusieurs machines, la batch normalization calcule d'habitude sa moyenne et sa variance par machine. Les deux vues d'une paire sont sur la même machine, donc elles partagent ces statistiques : une <b>fuite d'information</b> locale que le modèle peut exploiter pour mieux réussir sa prédiction sans améliorer ses représentations. La solution : agréger la moyenne et la variance de BN sur toutes les machines. Encore un raccourci, encore une parade.</p>
+</div>
+
+<!-- ======================================================= 10 -->
+<h2 id="eval"><span class="n">10</span><span class="en">Evaluation and results</span><span class="fr">Évaluation et résultats</span></h2>
+<div class="en">
+<p><b>Linear evaluation.</b> Pretrain on ImageNet (ILSVRC-2012) without the labels, <b>freeze</b> the encoder, then train a single linear classifier on \(h\) with the labels. Since it can only draw straight boundaries, its accuracy measures how well the classes are already separated: it is a <b>measuring instrument</b>.</p>
+<p><b>Fine-tuning.</b> Start from the SimCLR weights and retrain the whole network with labels. Unlike linear evaluation, the encoder is not frozen.</p>
+<p>Defaults for the studies: crop + flip, colour, blur; ResNet-50; MLP head to 128 dimensions; NT-Xent; LARS; batch 4096; 100 epochs. The results below use <b>1000 epochs</b>.</p>
+</div>
+<div class="fr">
+<p><b>Évaluation linéaire.</b> On pré-entraîne sur ImageNet (ILSVRC-2012) sans les étiquettes, on <b>fige</b> l'encodeur, puis on entraîne un seul classifieur linéaire sur \(h\) avec les étiquettes. Comme il ne trace que des frontières droites, sa précision mesure à quel point les classes sont déjà séparées : c'est un <b>instrument de mesure</b>.</p>
+<p><b>Fine-tuning.</b> On part des poids de SimCLR et on réentraîne tout le réseau avec des étiquettes. Contrairement à l'évaluation linéaire, l'encodeur n'est pas figé.</p>
+<p>Réglages par défaut des études : crop + retournement, couleur, flou ; ResNet-50 ; tête MLP vers 128 dimensions ; NT-Xent ; LARS ; batch 4096 ; 100 époques. Les résultats ci-dessous utilisent <b>1000 époques</b>.</p>
+</div>
+<div class="tw"><table>
+  <tr><th></th><th class="num">ResNet-50</th><th class="num">2×</th><th class="num">4×</th><th><span class="en">Reference</span><span class="fr">Référence</span></th></tr>
+  <tr><td><span class="en">linear evaluation, top-1 (table 6)</span><span class="fr">évaluation linéaire, top-1 (table 6)</span></td><td class="num"><b>69.3</b></td><td class="num">74.2</td><td class="num"><b>76.5</b></td><td><span class="en">CPC v2 ResNet-50: 63.8; supervised ResNet-50: 76.5</span><span class="fr">CPC v2 ResNet-50 : 63,8 ; ResNet-50 supervisé : 76,5</span></td></tr>
+  <tr><td><span class="en">1% of labels, top-5 (table 7)</span><span class="fr">1 % des étiquettes, top-5 (table 7)</span></td><td class="num">75.5</td><td class="num">83.0</td><td class="num"><b>85.8</b></td><td><span class="en">supervised ResNet-50: 48.4</span><span class="fr">ResNet-50 supervisé : 48,4</span></td></tr>
+  <tr><td><span class="en">10% of labels, top-5 (table 7)</span><span class="fr">10 % des étiquettes, top-5 (table 7)</span></td><td class="num">87.8</td><td class="num">91.2</td><td class="num">92.6</td><td><span class="en">supervised ResNet-50: 80.4</span><span class="fr">ResNet-50 supervisé : 80,4</span></td></tr>
+</table></div>
+<ul class="list en">
+  <li><b>Why such a gap with 1% of labels?</b> SimCLR pretrains on <b>all</b> the images without labels, then fine-tunes on the 1%. The supervised model only uses the labelled images: the other 99% are wasted.</li>
+  <li><b>Transfer (table 8, 12 datasets, ResNet-50 4×, fine-tuned):</b> SimCLR is better on 5, worse on 2 (Pets, Flowers), statistically tied on 5. So equal or better on <b>10 out of 12</b>.</li>
+</ul>
+<ul class="list fr">
+  <li><b>Pourquoi un tel écart avec 1 % des étiquettes ?</b> SimCLR se pré-entraîne sur <b>toutes</b> les images sans étiquettes, puis fait un fine-tuning sur les 1 %. Le modèle supervisé n'utilise que les images étiquetées : les 99 % restantes sont gaspillées.</li>
+  <li><b>Transfert (table 8, 12 bases, ResNet-50 4×, fine-tuning) :</b> SimCLR est meilleur sur 5, moins bon sur 2 (Pets, Flowers), à égalité statistique sur 5. Soit égal ou meilleur sur <b>10 sur 12</b>.</li>
+</ul>
+
+<!-- ======================================================= 11 -->
+<h2 id="limits"><span class="n">11</span><span class="en">Critical reading</span><span class="fr">Lecture critique</span></h2>
+<p class="en">My own reading, not claims from the paper:</p>
+<p class="fr">Ma propre lecture, pas des affirmations de l'article :</p>
+<ul class="list en">
+  <li><b>"Matches supervised" needs context.</b> The 76.5% uses a ResNet-50 4× (375M parameters) trained for 1000 epochs, against a standard supervised ResNet-50 (24M). With the same ResNet-50, SimCLR reaches 69.3%.</li>
+  <li><b>False negatives.</b> All other images of the batch count as negatives, even from the same class or showing the same object, and a low temperature gives them even more weight. The paper does not address it.</li>
+  <li><b>Cost.</b> Very large batches, long training, 32 to 128 TPU cores. The simplicity is conceptual, not computational.</li>
+  <li><b>Hand-picked augmentations</b>, tuned for natural photos. On another domain (bacteria, satellite), a poorly chosen augmentation could erase useful information such as colour. It is a bit ironic, since the paper criticizes the ad hoc heuristics of pretext tasks.</li>
+  <li><b>Conjectures.</b> The colour shortcut and the \(h\) vs \(z\) explanation are presented as conjectures, supported by experiments but not proven.</li>
+  <li><b>Invariance to augmentations, not to identity.</b> To verify faces as in Chopra et al., you would still need fine-tuning with labelled pairs.</li>
+</ul>
+<ul class="list fr">
+  <li><b>« Au niveau du supervisé » demande du contexte.</b> Les 76,5 % utilisent un ResNet-50 4× (375 M de paramètres) entraîné 1000 époques, face à un ResNet-50 supervisé standard (24 M). Avec le même ResNet-50, SimCLR atteint 69,3 %.</li>
+  <li><b>Faux négatifs.</b> Toutes les autres images du batch comptent comme négatifs, même de la même classe ou montrant le même objet, et une température basse leur donne encore plus de poids. L'article ne traite pas ce point.</li>
+  <li><b>Coût.</b> Très grands batchs, entraînement long, 32 à 128 cœurs de TPU. La simplicité est conceptuelle, pas en calcul.</li>
+  <li><b>Augmentations choisies à la main</b>, réglées pour des photos naturelles. Sur un autre domaine (bactéries, satellite), une augmentation mal choisie pourrait effacer une information utile comme la couleur. C'est un peu ironique, puisque l'article critique les heuristiques ad hoc des tâches prétextes.</li>
+  <li><b>Conjectures.</b> Le raccourci couleur et l'explication \(h\) contre \(z\) sont présentés comme des conjectures, appuyées par des expériences mais pas démontrées.</li>
+  <li><b>Invariance aux augmentations, pas à l'identité.</b> Pour vérifier des visages comme Chopra et al., il faudrait encore un fine-tuning avec des paires étiquetées.</li>
+</ul>
+
+<!-- ======================================================= 12 -->
+<h2 id="chopra"><span class="n">12</span><span class="en">Compared with Chopra et al. (2005)</span><span class="fr">Comparaison avec Chopra et al. (2005)</span></h2>
+<p class="en">SimCLR cites Hadsell et al. (2006) as the origin of contrastive approaches, the direct follow-up of <a href="chopra-2005.html">Chopra et al. (2005)</a>. Same core idea, fifteen years apart:</p>
+<p class="fr">SimCLR cite Hadsell et al. (2006) comme origine des approches contrastives, la suite directe de <a href="chopra-2005.html">Chopra et al. (2005)</a>. Même idée de fond, quinze ans plus tard :</p>
+<div class="tw"><table>
+  <tr><th></th><th>Chopra 2005</th><th>SimCLR 2020</th></tr>
+  <tr><td><span class="en">Labels</span><span class="fr">Étiquettes</span></td><td><span class="en">yes, to build the pairs</span><span class="fr">oui, pour former les paires</span></td><td><span class="en">no (self-supervised)</span><span class="fr">non (auto-supervisé)</span></td></tr>
+  <tr><td><span class="en">Positive pair</span><span class="fr">Paire positive</span></td><td><span class="en">two photos of the same person</span><span class="fr">deux photos de la même personne</span></td><td><span class="en">two augmentations of the same image</span><span class="fr">deux augmentations de la même image</span></td></tr>
+  <tr><td><span class="en">Negatives</span><span class="fr">Négatifs</span></td><td><span class="en">chosen impostor pairs (50/50)</span><span class="fr">paires impostor choisies (50/50)</span></td><td><span class="en">all other views of the batch</span><span class="fr">toutes les autres vues du batch</span></td></tr>
+  <tr><td><span class="en">Network</span><span class="fr">Réseau</span></td><td><span class="en">one CNN, shared weights</span><span class="fr">un CNN, poids partagés</span></td><td><span class="en">ResNet-50 + MLP head, one encoder for both views</span><span class="fr">ResNet-50 + tête MLP, un seul encodeur pour les deux vues</span></td></tr>
+  <tr><td><span class="en">Measure</span><span class="fr">Mesure</span></td><td><span class="en">distance (energy \(E_W\))</span><span class="fr">distance (énergie \(E_W\))</span></td><td><span class="en">cosine similarity</span><span class="fr">similarité cosinus</span></td></tr>
+  <tr><td>Loss</td><td><span class="en">energy-based, pair by pair</span><span class="fr">à énergie, paire par paire</span></td><td><span class="en">NT-Xent, softmax over the batch</span><span class="fr">NT-Xent, softmax sur le batch</span></td></tr>
+  <tr><td>Anti-collapse</td><td><span class="en">\(L_I\) term on impostors</span><span class="fr">terme \(L_I\) sur les impostors</span></td><td><span class="en">negatives in the denominator</span><span class="fr">négatifs du dénominateur</span></td></tr>
+  <tr><td><span class="en">Use afterwards</span><span class="fr">Utilisation ensuite</span></td><td><span class="en">compare vectors of new people, no retraining (Gaussian model + threshold in the tests)</span><span class="fr">comparer les vecteurs de nouvelles personnes, sans réentraînement (modèle gaussien + seuil dans les tests)</span></td><td><span class="en">\(h\) + linear classifier or fine-tuning, with labels</span><span class="fr">\(h\) + classifieur linéaire ou fine-tuning, avec étiquettes</span></td></tr>
+  <tr><td><span class="en">Scale</span><span class="fr">Échelle</span></td><td><span class="en">up to 140,000 training pairs</span><span class="fr">jusqu'à 140&nbsp;000 paires d'entraînement</span></td><td><span class="en">ImageNet, 1.28M images, batch 4096</span><span class="fr">ImageNet, 1,28 M d'images, batch de 4096</span></td></tr>
+</table></div>
+
+<!-- ======================================================= 13 -->
+<h2 id="quiz"><span class="n">13</span><span class="en">Quiz: did you get it?</span><span class="fr">Quiz : avez-vous compris ?</span></h2>
+<p class="en">10 questions. Score 8 or more and someone will be happy.</p>
+<p class="fr">10 questions. Faites 8 ou plus et quelqu'un sera content.</p>
+<div id="quiz-box"></div>
+<div class="quiz-bar">
+  <button class="btn" id="check" type="button"><span class="en">Check my answers</span><span class="fr">Vérifier mes réponses</span></button>
+  <button class="btn ghost" id="retry" type="button" hidden><span class="en">Try again</span><span class="fr">Recommencer</span></button>
+  <span class="score" id="score" aria-live="polite"></span>
+</div>
+<div id="cat-out" aria-live="polite"><pre id="cat-art"></pre><span class="say" id="cat-say"></span><div class="msg" id="cat-msg"></div></div>
+
+<!-- ======================================================= refs -->
+<h2 id="refs"><span class="en">References</span><span class="fr">Références</span></h2>
+<ul class="list refs">
+  <li>T. Chen, S. Kornblith, M. Norouzi, G. Hinton. <i>A Simple Framework for Contrastive Learning of Visual Representations.</i> ICML 2020. <a href="https://arxiv.org/abs/2002.05709" target="_blank" rel="noopener">arXiv</a></li>
+  <li>S. Becker, G. Hinton. <i>Self-organizing neural network that discovers surfaces in random-dot stereograms.</i> Nature, 1992.</li>
+  <li>R. Hadsell, S. Chopra, Y. LeCun. <i>Dimensionality Reduction by Learning an Invariant Mapping.</i> CVPR 2006.</li>
+  <li>S. Chopra, R. Hadsell, Y. LeCun. <i>Learning a Similarity Metric Discriminatively, with Application to Face Verification.</i> CVPR 2005. <a href="chopra-2005.html">My notes</a></li>
+</ul>
+<p class="en" style="font-size:15px;color:var(--dim)">BibTeX entry, to cite the paper in LaTeX:</p>
+<p class="fr" style="font-size:15px;color:var(--dim)">Entrée BibTeX, pour citer l'article dans LaTeX :</p>
+<div class="cite">@inproceedings{chen2020simple,
+  title     = {A Simple Framework for Contrastive Learning of Visual Representations},
+  author    = {Chen, Ting and Kornblith, Simon and Norouzi, Mohammad and Hinton, Geoffrey},
+  booktitle = {International Conference on Machine Learning (ICML)},
+  year      = {2020}
+}</div>
+
+<footer>
+  <span><span class="en">Notes by <a href="../">Eyub Celebioglu</a>, written while studying contrastive learning (M.Sc. AI, Vision &amp; Robotics). Spotted a mistake? <a href="mailto:eyub.celebioglu@gmail.com">Tell me</a>.</span><span class="fr">Notes d'<a href="../">Eyub Celebioglu</a>, écrites en révisant l'apprentissage contrastif (Master IA, Vision &amp; Robotique). Une erreur ? <a href="mailto:eyub.celebioglu@gmail.com">Dites-le-moi</a>.</span></span>
+  <span class="mono">=^.^=</span>
+</footer>
+</div>
+
+<script src="notes.js"></script>
+<script>
+/* ---------- interactive demo: a tiny SimCLR trained live ---------- */
+(() => {
+  // toy "images": a hidden class + what makes the image unique, plus a colour unique to the image
+  const CLASSES = 4, CONTENT = 6, COLOUR = 3, DIM = CONTENT + COLOUR;
+  const H_DIM = 4, HIDDEN = 16, Z_DIM = 4;
+  const N_TRAIN = 300, N_TEST = 200, N_SHOW = 12, BATCH = 24, TAU = .1, LR = .004;
+  const PROTO = 3.5, UNIQUE = 1.2, CROP = .6, COLOUR_STD = 2.5, COLOUR_NOISE = .15;
+  const HIST = 600, EVAL_EVERY = 25, STEPS_PER_FRAME = 2;
+
+  const simCv = document.getElementById('sim'), chart = document.getElementById('chart');
+  const playB = document.getElementById('play'), distB = document.getElementById('dist'), negB = document.getElementById('neg');
+  const readout = document.getElementById('readout');
+  let rnd, randn, seed = 7;
+  let protos, train, test, show, params, opt, t;
+  let steps, taskEma, lin, hist, stride, prev = null;
+  let running = false, started = false, visible = false;
+
+  const randVec = (n, s) => Array.from({length: n}, () => randn() * s);
+  const randMat = (rows, cols, s) => Array.from({length: rows}, () => randVec(cols, s));
+  const zeros = x => Array.isArray(x) ? x.map(zeros) : 0;
+
+  function newImage(){
+    const k = rnd() * CLASSES | 0;
+    return {k, content: protos[k].map(p => p + randn() * UNIQUE), colour: randVec(COLOUR, COLOUR_STD)};
+  }
+  // an augmented view: a noisy "crop" of the content, and a colour either kept or redrawn
+  function view(im, distort){
+    const x = new Array(DIM);
+    for (let j = 0; j < CONTENT; j++) x[j] = im.content[j] + randn() * CROP;
+    for (let j = 0; j < COLOUR; j++) x[CONTENT + j] = distort ? randn() * COLOUR_STD : im.colour[j] + randn() * COLOUR_NOISE;
+    return x;
+  }
+
+  function init(){
+    rnd = mulberry32(seed);
+    randn = () => { let u = 0; while (!u) u = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rnd()); };
+    protos = Array.from({length: CLASSES}, () => { const v = randVec(CONTENT, 1), n = Math.hypot(...v); return v.map(x => x / n * PROTO); });
+    train = Array.from({length: N_TRAIN}, newImage);
+    test = Array.from({length: N_TEST}, newImage);
+    // the 12 images of the matrix, sorted by hidden class, with frozen views so it does not flicker
+    show = [...test.slice(0, N_SHOW)].sort((a, b) => a.k - b.k).map(im => ({k: im.k, on: [view(im, true), view(im, true)], off: [view(im, false), view(im, false)]}));
+    params = {
+      A: randMat(H_DIM, DIM, 1 / Math.sqrt(DIM)),
+      C: randMat(HIDDEN, H_DIM, 1 / Math.sqrt(H_DIM)),
+      b: new Array(HIDDEN).fill(.1),
+      B: randMat(Z_DIM, HIDDEN, 1 / Math.sqrt(HIDDEN))
+    };
+    opt = {}; for (const k in params) opt[k] = {m: zeros(params[k]), v: zeros(params[k])};
+    t = 0; steps = 0; taskEma = null; hist = []; stride = 1;
+    lin = linearEval();
+    record();
+  }
+
+  /* ---------- the network: f(x) = h, g(h) = z ---------- */
+  function f(x){
+    return params.A.map(w => { let s = 0; for (let j = 0; j < DIM; j++) s += w[j] * x[j]; return Math.tanh(s); });
+  }
+  function g(h){
+    const act = params.C.map((w, i) => { let s = params.b[i]; for (let j = 0; j < H_DIM; j++) s += w[j] * h[j]; return Math.max(0, s); });
+    const raw = params.B.map(w => { let s = 0; for (let j = 0; j < HIDDEN; j++) s += w[j] * act[j]; return s; });
+    const norm = Math.hypot(...raw) + 1e-9;
+    return {z: raw.map(v => v / norm), norm, act};
+  }
+  const dot = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; };
+
+  // one training step: NT-Xent on a batch, gradients by hand, then Adam
+  function step(){
+    const distort = distB.checked, useNeg = negB.checked, V = 2 * BATCH;
+    const xs = [], hs = [], gs = [];
+    for (let i = 0; i < BATCH; i++){ const im = train[rnd() * N_TRAIN | 0]; xs.push(view(im, distort), view(im, distort)); }
+    for (const x of xs){ const h = f(x); hs.push(h); gs.push(g(h)); }
+
+    // dL/dz for every view (partners are i and i^1, as 2k-1 and 2k in the paper)
+    const dz = Array.from({length: V}, () => new Array(Z_DIM).fill(0));
+    let correct = 0;
+    for (let i = 0; i < V; i++){
+      const p = i ^ 1, zi = gs[i].z, ex = new Array(V).fill(0);
+      let Z = 0, best = -2, bestK = -1;
+      for (let k = 0; k < V; k++){
+        if (k === i) continue;
+        const s = dot(zi, gs[k].z);
+        if (s > best){ best = s; bestK = k; }
+        ex[k] = Math.exp(s / TAU); Z += ex[k];
+      }
+      if (bestK === p) correct++;
+      if (useNeg){
+        for (let k = 0; k < V; k++){
+          if (k === i) continue;
+          const w = ex[k] / Z / TAU - (k === p ? 1 / TAU : 0);
+          for (let d = 0; d < Z_DIM; d++){ dz[i][d] += w * gs[k].z[d]; dz[k][d] += w * zi[d]; }
+        }
+      } else {
+        // numerator only: nothing pushes the views apart any more
+        for (let d = 0; d < Z_DIM; d++){ dz[i][d] -= gs[p].z[d] / TAU; dz[p][d] -= zi[d] / TAU; }
+      }
+    }
+
+    // backprop through the normalization, g, then f
+    const grad = {A: zeros(params.A), C: zeros(params.C), b: zeros(params.b), B: zeros(params.B)};
+    for (let i = 0; i < V; i++){
+      const {z, norm, act} = gs[i], along = dot(dz[i], z), dRaw = dz[i].map((v, d) => (v - along * z[d]) / norm);
+      const dAct = new Array(HIDDEN).fill(0);
+      for (let a = 0; a < Z_DIM; a++) for (let b = 0; b < HIDDEN; b++){ grad.B[a][b] += dRaw[a] * act[b] / V; dAct[b] += dRaw[a] * params.B[a][b]; }
+      const dH = new Array(H_DIM).fill(0);
+      for (let a = 0; a < HIDDEN; a++){
+        if (act[a] <= 0) continue;   // inactive ReLU
+        grad.b[a] += dAct[a] / V;
+        for (let b = 0; b < H_DIM; b++){ grad.C[a][b] += dAct[a] * hs[i][b] / V; dH[b] += dAct[a] * params.C[a][b]; }
+      }
+      for (let a = 0; a < H_DIM; a++){
+        const c = dH[a] * (1 - hs[i][a] ** 2);
+        for (let b = 0; b < DIM; b++) grad.A[a][b] += c * xs[i][b] / V;
+      }
+    }
+    adam(grad);
+    const acc = correct / V;
+    taskEma = taskEma === null ? acc : .95 * taskEma + .05 * acc;
+    steps++;
+    if (steps % EVAL_EVERY === 0) lin = linearEval();
+    record();
+  }
+  function adam(grad){
+    t++;
+    const b1 = .9, b2 = .999;
+    const update = (p, g, m, v) => {
+      for (let i = 0; i < p.length; i++){
+        if (Array.isArray(p[i])){ update(p[i], g[i], m[i], v[i]); continue; }
+        m[i] = b1 * m[i] + (1 - b1) * g[i];
+        v[i] = b2 * v[i] + (1 - b2) * g[i] * g[i];
+        p[i] -= LR * (m[i] / (1 - b1 ** t)) / (Math.sqrt(v[i] / (1 - b2 ** t)) + 1e-8);
+      }
+    };
+    for (const k in params) update(params[k], grad[k], opt[k].m, opt[k].v);
+  }
+
+  /* ---------- linear evaluation: ridge classifier on frozen h, with the hidden labels ---------- */
+  function solve(M, Y){
+    const n = M.length, A = M.map((r, i) => [...r, ...Y[i]]);
+    for (let i = 0; i < n; i++){
+      let p = i;
+      for (let q = i + 1; q < n; q++) if (Math.abs(A[q][i]) > Math.abs(A[p][i])) p = q;
+      [A[i], A[p]] = [A[p], A[i]];
+      const d = A[i][i];
+      for (let j = i; j < A[i].length; j++) A[i][j] /= d;
+      for (let q = 0; q < n; q++){
+        if (q === i) continue;
+        const c = A[q][i];
+        for (let j = i; j < A[q].length; j++) A[q][j] -= c * A[i][j];
+      }
+    }
+    return A.map(r => r.slice(n));
+  }
+  function linearEval(){
+    const features = im => [...f(view(im, false)), 1], d = H_DIM + 1;
+    const M = Array.from({length: d}, (_, i) => Array.from({length: d}, (_, j) => i === j ? .01 : 0));
+    const Y = Array.from({length: d}, () => new Array(CLASSES).fill(0));
+    for (const im of train){
+      const x = features(im);
+      for (let i = 0; i < d; i++){ for (let j = 0; j < d; j++) M[i][j] += x[i] * x[j]; Y[i][im.k] += x[i]; }
+    }
+    const W = solve(M, Y);
+    let ok = 0;
+    for (const im of test){
+      const x = features(im);
+      let best = -Infinity, pick = 0;
+      for (let c = 0; c < CLASSES; c++){ let s = 0; for (let i = 0; i < d; i++) s += W[i][c] * x[i]; if (s > best){ best = s; pick = c; } }
+      if (pick === im.k) ok++;
+    }
+    return ok / N_TEST;
+  }
+
+  // keep the whole run on the chart: when full, drop every other point and sample half as often
+  function record(){
+    if (steps % stride) return;
+    hist.push([taskEma === null ? 0 : taskEma, lin]);
+    if (hist.length > HIST){ hist = hist.filter((_, i) => i % 2 === 0); stride *= 2; }
+  }
+
+  /* ---------- drawing ---------- */
+  function similarities(){
+    const zs = [];
+    for (const s of show) for (const x of (distB.checked ? s.on : s.off)) zs.push(g(f(x)).z);
+    return zs.map(a => zs.map(b => dot(a, b)));
+  }
+  function drawMatrix(S){
+    const [c, w] = fit(simCv), n = S.length, pad = 6, cell = (w - 2 * pad) / n;
+    c.clearRect(0, 0, w, w);
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++){
+      const v = i === j ? 0 : Math.max(0, S[i][j]);
+      c.fillStyle = i === j ? '#f0f0f3' : `rgb(${255 - 226 * v | 0},${255 - 226 * v | 0},${255 - 224 * v | 0})`;
+      c.fillRect(pad + j * cell, pad + i * cell, Math.ceil(cell), Math.ceil(cell));
+    }
+    // class boundaries: hidden from the model, shown to the reader
+    c.strokeStyle = '#c8372d'; c.lineWidth = 1; c.beginPath();
+    show.forEach((s, i) => {
+      if (i && s.k !== show[i - 1].k){
+        const q = pad + 2 * i * cell;
+        c.moveTo(q, pad); c.lineTo(q, w - pad); c.moveTo(pad, q); c.lineTo(w - pad, q);
+      }
+    });
+    c.stroke();
+  }
+  function drawChart(){
+    const [c, w, h] = fit(chart), pl = 34, pb = 26, pt = 12, pr = 10;
+    const X = (i, n) => pl + (w - pl - pr) * i / Math.max(HIST / 2, n - 1), Y = v => pt + (h - pt - pb) * (1 - v);
+    c.clearRect(0, 0, w, h);
+    c.strokeStyle = '#d4d4da'; c.lineWidth = 1; c.beginPath(); c.moveTo(pl, pt); c.lineTo(pl, h - pb); c.lineTo(w - pr, h - pb); c.stroke();
+    c.fillStyle = '#9a9aa0'; c.font = '11px "JetBrains Mono", monospace'; c.textAlign = 'right';
+    [0, 25, 50, 75, 100].forEach(v => c.fillText(v, pl - 6, Y(v / 100) + 4));
+    c.setLineDash([4, 4]); c.strokeStyle = '#b4b4ba'; c.beginPath(); c.moveTo(pl, Y(.25)); c.lineTo(w - pr, Y(.25)); c.stroke(); c.setLineDash([]);
+    c.textAlign = 'left';
+    c.fillText(lang() === 'fr' ? 'pas d’entraînement →' : 'training steps →', pl + 4, h - 9);
+    const line = (data, col, width, alpha) => {
+      [[0, '#1f5fae'], [1, '#c8372d']].forEach(([k, colour]) => {
+        c.strokeStyle = col || colour; c.lineWidth = width; c.globalAlpha = alpha; c.beginPath();
+        data.forEach((v, i) => i ? c.lineTo(X(i, data.length), Y(v[k])) : c.moveTo(X(i, data.length), Y(v[k])));
+        c.stroke(); c.globalAlpha = 1;
+      });
+    };
+    if (prev) line(prev, null, 1.5, .25);
+    line(hist, null, 2, 1);
+  }
+  function drawReadout(S){
+    const fr = lang() === 'fr', pct = v => Math.round(v * 100) + ' %';
+    let off = 0, n = 0;
+    for (let i = 0; i < S.length; i++) for (let j = 0; j < S.length; j++){ if (i !== j){ off += S[i][j]; n++; } }
+    const mean = off / n, task = taskEma === null ? 0 : taskEma;
+    let s = `${fr ? 'pas' : 'step'} ${steps} · <span class="g">${fr ? 'tâche' : 'task'} ${pct(task)}</span> · <span class="i">${fr ? 'évaluation linéaire' : 'linear evaluation'} ${pct(lin)}</span> · ${fr ? 'similarité moyenne' : 'mean similarity'} ${mean.toFixed(2)}`;
+    if (steps > 300){
+      if (!negB.checked && mean > .9) s += `<br>${fr ? 'collapse : tous les z sont presque identiques' : 'collapse: all z are nearly identical'}`;
+      else if (!distB.checked && task > .7 && lin < .7) s += `<br>${fr ? 'raccourci : le réseau reconnaît les paires à la couleur, sans apprendre le contenu' : 'shortcut: the network recognizes pairs from colour, without learning the content'}`;
+    }
+    readout.innerHTML = s;
+  }
+  function draw(){
+    const S = similarities();
+    drawMatrix(S); drawChart(); drawReadout(S);
+  }
+
+  /* ---------- controls ---------- */
+  function setPlay(on){
+    const wasRunning = running;
+    running = on;
+    playB.textContent = on ? '❚❚ Pause' : lang() === 'fr' ? '▶ Entraîner' : '▶ Train';
+    if (on && !wasRunning) requestAnimationFrame(loop);
+  }
+  function loop(){
+    if (!running) return;
+    if (visible){ for (let i = 0; i < STEPS_PER_FRAME; i++) step(); draw(); }
+    requestAnimationFrame(loop);
+  }
+  function restart(keepCurve){
+    prev = keepCurve && steps > 100 ? hist : null;
+    init(); draw();
+    if (!running) setPlay(true);
+  }
+  playB.onclick = () => setPlay(!running);
+  document.getElementById('reset').onclick = () => { seed = Math.random() * 1e9 | 0; restart(false); };
+  distB.onchange = () => restart(true);    // same seed, so the two runs can be compared
+  negB.onchange = draw;
+  langHooks.push(() => { setPlay(running); draw(); });
+  new IntersectionObserver(es => {
+    visible = es[0].isIntersecting;
+    if (visible && !started){ started = true; if (!reduced) setPlay(true); }
+  }, {threshold: .35}).observe(simCv);
+  let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(draw, 150); });
+
+  init();
+  setPlay(false); draw();
+})();
+
+/* ---------- temperature: the softmax of the denominator ---------- */
+(() => {
+  // made-up similarities to one anchor: the positive, a false negative, then ordinary negatives
+  const CANDIDATES = [[.8, 'pos'], [.78, 'fneg'], [.6], [.5], [.4], [.3], [.2], [.1], [0], [-.1], [-.2], [-.4]];
+  const slider = document.getElementById('tau'), box = document.getElementById('bars');
+  const label = c => c[1] === 'pos' ? bi('positive', 'positive') : c[1] === 'fneg' ? bi('false neg.', 'faux négatif') : bi('negative', 'négatif');
+  box.innerHTML = CANDIDATES.map(c => `<div class="bar ${c[1] || ''}"><span>${label(c)} ${c[0].toFixed(2)}</span><div><i></i></div><span class="v"></span></div>`).join('');
+  const rows = [...box.children];
+
+  function update(){
+    const tau = 10 ** +slider.value;
+    const ex = CANDIDATES.map(c => Math.exp(c[0] / tau)), Z = ex.reduce((a, b) => a + b), p = ex.map(v => v / Z);
+    const entropy = -p.reduce((s, v) => s + (v > 0 ? v * Math.log(v) : 0), 0);
+    p.forEach((v, i) => {
+      rows[i].querySelector('i').style.width = (v * 100) + '%';
+      rows[i].querySelector('.v').textContent = Math.round(v * 100) + '%';
+    });
+    document.getElementById('tauv').textContent = tau < .1 ? tau.toFixed(3) : tau.toFixed(2);
+    const fr = lang() === 'fr';
+    document.getElementById('taureadout').innerHTML =
+      `${fr ? 'entropie' : 'entropy'} ${entropy.toFixed(2)} (max ${Math.log(CANDIDATES.length).toFixed(2)}) · ` +
+      `${fr ? 'candidates qui comptent' : 'candidates that count'} ≈ ${Math.exp(entropy).toFixed(1)} · loss ${(-Math.log(p[0])).toFixed(2)}`;
+  }
+  slider.oninput = update;
+  langHooks.push(update);
+  update();
+})();
+
+/* ---------- quiz ---------- */
+const QUIZ = [
+  { q: ['How does SimCLR build a positive pair without labels?', 'Comment SimCLR fabrique-t-il une paire positive sans étiquettes ?'],
+    o: [['Two photos of the same object, found with a nearest-neighbour search.', 'Deux photos du même objet, trouvées par plus proches voisins.'],
+        ['Two independent augmentations of the same image.', 'Deux augmentations indépendantes de la même image.'],
+        ['An image and its class prototype, stored in a memory bank.', 'Une image et le prototype de sa classe, stocké dans une memory bank.'],
+        ['Two images that the current model finds similar.', 'Deux images que le modèle actuel trouve similaires.']],
+    a: 1, s: '#idea',
+    e: ['The algorithm created both views, so it knows they are partners (indices 2k−1 and 2k).', 'L’algorithme a créé les deux vues, donc il sait qu’elles sont partenaires (indices 2k−1 et 2k).'] },
+  { q: ['With a batch of N = 3 images, for one view, how many negatives?', 'Avec un batch de N = 3 images, pour une vue, combien de négatifs ?'],
+    o: [['2', '2'], ['3', '3'], ['4', '4'], ['5', '5']],
+    a: 2, s: '#components',
+    e: ['6 views in total, minus the view itself, minus its partner: 2(N−1) = 4.', '6 vues au total, moins la vue elle-même, moins sa partenaire : 2(N−1) = 4.'] },
+  { q: ['What prevents the collapse in SimCLR?', 'Qu’est-ce qui empêche le collapse dans SimCLR ?'],
+    o: [['The negatives in the denominator of the loss.', 'Les négatifs du dénominateur de la loss.'],
+        ['The strong augmentations.', 'Les augmentations fortes.'],
+        ['The projection head.', 'La tête de projection.'],
+        ['Global BN.', 'Le Global BN.']],
+    a: 0, s: '#traps',
+    e: ['If every z is identical, the loss is stuck at log(2N−1). Augmentations fight a different problem: shortcuts. Untick "negatives" in the demo.', 'Si tous les z sont identiques, la loss reste bloquée à log(2N−1). Les augmentations luttent contre un autre problème : les raccourcis. Décochez « négatifs » dans la démo.'] },
+  { q: ['Why is random crop alone not enough?', 'Pourquoi le crop aléatoire seul ne suffit-il pas ?'],
+    o: [['Crops are too expensive to compute.', 'Les crops sont trop coûteux à calculer.'],
+        ['The network cannot identify pairs from crops.', 'Le réseau n’arrive pas à retrouver les paires à partir de crops.'],
+        ['Crops destroy the object in the image.', 'Les crops détruisent l’objet dans l’image.'],
+        ['Crops of one image share a colour distribution: the network can solve the task with this shortcut.', 'Les crops d’une image partagent une distribution de couleurs : le réseau peut résoudre la tâche avec ce raccourci.']],
+    a: 3, s: '#aug',
+    e: ['The paper presents this as a conjecture, supported by figure 6. The network solves the task almost perfectly, but learns poor representations.', 'L’article présente cela comme une conjecture, appuyée par la figure 6. Le réseau réussit presque parfaitement la tâche, mais apprend de mauvaises représentations.'] },
+  { q: ['What does table 1 show?', 'Que montre la table 1 ?'],
+    o: [['SimCLR is better than supervised learning.', 'SimCLR est meilleur que le supervisé.'],
+        ['Contrastive learning benefits from stronger colour augmentation than supervised learning.', 'Le contrastif profite d’une augmentation de couleur plus forte que le supervisé.'],
+        ['AutoAugment is the best policy for SimCLR.', 'AutoAugment est la meilleure stratégie pour SimCLR.'],
+        ['Colour distortion hurts both methods.', 'La distorsion de couleur nuit aux deux méthodes.']],
+    a: 1, s: '#aug',
+    e: ['SimCLR goes from 59.6 to 64.5, supervised from 77.0 down to 75.4. Supervised stays higher.', 'SimCLR passe de 59,6 à 64,5, le supervisé de 77,0 à 75,4. Le supervisé reste au-dessus.'] },
+  { q: ['Why keep h and throw away z?', 'Pourquoi garder h et jeter z ?'],
+    o: [['z has too few dimensions.', 'z a trop peu de dimensions.'],
+        ['h is faster to compute.', 'h est plus rapide à calculer.'],
+        ['z is trained to be invariant to the augmentations and loses information that h keeps.', 'z est entraîné à être invariant aux augmentations et perd des informations que h garde.'],
+        ['The labels are attached to h.', 'Les étiquettes sont rattachées à h.']],
+    a: 2, s: '#head',
+    e: ['Table 3 tests it with z the same size as h (2048): the loss erases the information, not the size. Rotation: 67.6 from h, 25.6 from z.', 'La table 3 le teste avec z de même taille que h (2048) : c’est la loss qui efface l’information, pas la taille. Rotation : 67,6 depuis h, 25,6 depuis z.'] },
+  { q: ['What happens if the temperature is too small?', 'Que se passe-t-il si la température est trop petite ?'],
+    o: [['The softmax is flat, and easy negatives drown out the hard ones.', 'Le softmax est plat, et les négatifs faciles noient les difficiles.'],
+        ['The softmax is pointy: only a few negatives count, possibly false negatives.', 'Le softmax est pointu : seuls quelques négatifs comptent, parfois des faux négatifs.'],
+        ['The vectors z leave the sphere.', 'Les vecteurs z sortent de la sphère.'],
+        ['Nothing, the temperature does not affect the result.', 'Rien, la température ne change pas le résultat.']],
+    a: 1, s: '#temperature',
+    e: ['Try τ = 0.02 on the slider. Table 5: entropy 1.0 at τ = 0.05, best top-1 at τ = 0.1.', 'Essayez τ = 0,02 sur le curseur. Table 5 : entropie 1,0 à τ = 0,05, meilleur top-1 à τ = 0,1.'] },
+  { q: ['Why does NT-Xent beat a margin loss here?', 'Pourquoi la NT-Xent bat-elle une loss à marge ici ?'],
+    o: [['It has more trainable weights.', 'Elle a plus de poids entraînables.'],
+        ['It uses the labels.', 'Elle utilise les étiquettes.'],
+        ['It needs no negatives.', 'Elle n’a pas besoin de négatifs.'],
+        ['The softmax weighs negatives by their hardness, without any mining.', 'Le softmax pondère les négatifs selon leur difficulté, sans sélection.']],
+    a: 3, s: '#temperature',
+    e: ['Table 4: 63.9 against 57.5 for margin with semi-hard mining, and 50.9 without.', 'Table 4 : 63,9 contre 57,5 pour la marge avec semi-hard mining, et 50,9 sans.'] },
+  { q: ['Why is Global BN needed?', 'Pourquoi faut-il un Global BN ?'],
+    o: [['Local BN lets the two views of a pair share statistics on the same device: an information leak.', 'La BN locale fait partager des statistiques aux deux vues d’une paire sur la même machine : une fuite d’information.'],
+        ['To reduce memory use.', 'Pour réduire la mémoire utilisée.'],
+        ['BN does not work on ResNets.', 'La BN ne marche pas sur les ResNets.'],
+        ['To replace the projection head.', 'Pour remplacer la tête de projection.']],
+    a: 0, s: '#batch',
+    e: ['Same family as the colour problem: a shortcut that helps the task without improving the representation.', 'Même famille que le problème de la couleur : un raccourci qui aide la tâche sans améliorer la représentation.'] },
+  { q: ['With 1% of labels, SimCLR reaches 85.8% top-5 against 48.4% for supervised. Why such a gap?', 'Avec 1 % des étiquettes, SimCLR atteint 85,8 % top-5 contre 48,4 % pour le supervisé. Pourquoi un tel écart ?'],
+    o: [['SimCLR secretly uses all the labels.', 'SimCLR utilise en secret toutes les étiquettes.'],
+        ['The supervised model is a smaller network in every case.', 'Le modèle supervisé est toujours un plus petit réseau.'],
+        ['SimCLR also learns from the 99% of unlabelled images during pretraining.', 'SimCLR apprend aussi sur les 99 % d’images non étiquetées pendant le pré-entraînement.'],
+        ['Top-5 favours self-supervised methods.', 'Le top-5 favorise les méthodes auto-supervisées.']],
+    a: 2, s: '#eval',
+    e: ['Pretraining uses all the images, fine-tuning uses the 1%. The supervised baseline wastes the other 99%. Note the 85.8 is a 4× model; the standard ResNet-50 reaches 75.5.', 'Le pré-entraînement utilise toutes les images, le fine-tuning les 1 %. Le supervisé gaspille les 99 % restants. Attention : 85,8 est un modèle 4× ; le ResNet-50 standard atteint 75,5.'] }
+];
+
+initNotes({
+  titles: {
+    en: 'SimCLR and the NT-Xent loss (Chen et al., 2020) · Eyub Celebioglu',
+    fr: 'SimCLR et la loss NT-Xent (Chen et al., 2020) · Eyub Celebioglu'
+  },
+  quiz: QUIZ
+});
+</script>
+</body>
+</html>
